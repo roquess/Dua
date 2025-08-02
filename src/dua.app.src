@@ -1,0 +1,22 @@
+{application, dua,
+ [{description, "DUA - Dual Universal Analysis: Bidirectional Probabilistic Reasoning"},
+  {vsn, "0.1.0"},
+  {registered, [dua_sup]},
+  {mod, {dua_app, []}},
+  {applications, [
+      kernel,
+      stdlib,
+      jsx,
+      lager
+  ]},
+  {env, [
+      {default_precision, 0.001},
+      {max_iterations, 1000},
+      {log_level, info}
+  ]},
+  {modules, []},
+  {licenses, ["MIT"]},
+  {links, [{"GitHub", "https://github.com/roquess/Dua"}]},
+  {maintainers, ["Steve Roques"]},
+  {exclude_files, ["test/", "examples/"]}
+]}.
