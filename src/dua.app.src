@@ -17,6 +17,5 @@
   {modules, []},
   {licenses, ["MIT"]},
   {links, [{"GitHub", "https://github.com/roquess/Dua"}]},
-  {maintainers, ["Steve Roques"]},
-  {exclude_files, ["test/", "examples/"]}
+  {maintainers, ["Steve Roques"]}
 ]}.
