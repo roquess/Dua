@@ -323,7 +323,8 @@ is_valid_distribution(Distribution) ->
 log_probability(P) when P > 0.0 ->
     math:log(P);
 log_probability(_P) ->
-    -math:log(0.0).  % -infinity
+    -math:inf().
+
 
 %% @doc Convert from log space back to probability
 -spec exp_probability(float()) -> probability().

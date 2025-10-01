@@ -1,14 +1,13 @@
 %%%-------------------------------------------------------------------
 %%% @doc DUA Belief Update Engine
-%%%
+%%
 %%% This module handles dynamic belief updates, evidence propagation,
 %%% and incremental inference when new information becomes available.
 %%%-------------------------------------------------------------------
-
 -module(dua_update).
-
 -include("dua.hrl").
 
+%% API
 -export([
     %% Main update functions
     propagate_evidence/2,
@@ -39,15 +38,19 @@
 %%%===================================================================
 
 %% @doc Propagate evidence using default algorithm ('pearl_propagation')
--spec propagate_evidence(#dua_graph{}, evidence()) -> {ok, #dua_graph{}} | dua_error().
+%% @param Graph The DUA graph to update.
+%% @param Evidence Map of node_id() => node_state() to propagate.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
+-spec propagate_evidence(#dua_graph{}, #{node_id() => node_state()}) -> {ok, #dua_graph{}} | dua_error().
 propagate_evidence(Graph, Evidence) ->
     propagate_evidence(Graph, Evidence, #{algorithm => pearl_propagation}).
 
 %% @doc Propagate evidence with options (specifying algorithm, etc)
--spec propagate_evidence(#dua_graph{}, evidence(), map()) -> {ok, #dua_graph{}} | dua_error().
+%% @param Options Map of options, e.g. #{algorithm => Algorithm, max_iterations => MaxIterations}.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
+-spec propagate_evidence(#dua_graph{}, #{node_id() => node_state()}, map()) -> {ok, #dua_graph{}} | dua_error().
 propagate_evidence(Graph, Evidence, Options) ->
     Algorithm = maps:get(algorithm, Options, pearl_propagation),
-    MaxIterations = maps:get(max_iterations, Options, ?MAX_ITERATIONS),
     case validate_evidence(Graph, Evidence) of
         ok ->
             execute_propagation(Graph, Evidence, Algorithm, Options);
@@ -56,6 +59,9 @@ propagate_evidence(Graph, Evidence, Options) ->
     end.
 
 %% @doc Update a node's belief and propagate the change locally
+%% @param NodeId The ID of the node to update.
+%% @param NewBelief The new belief to assign.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
 -spec update_belief(#dua_graph{}, node_id(), belief()) -> {ok, #dua_graph{}} | dua_error().
 update_belief(#dua_graph{nodes = Nodes} = Graph, NodeId, NewBelief) ->
     case maps:get(NodeId, Nodes, undefined) of
@@ -74,6 +80,8 @@ update_belief(#dua_graph{nodes = Nodes} = Graph, NodeId, NewBelief) ->
     end.
 
 %% @doc Perform a batch update of multiple node beliefs
+%% @param BeliefUpdates Map of node_id() => belief() to update.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
 -spec batch_update(#dua_graph{}, #{node_id() => belief()}) -> {ok, #dua_graph{}} | dua_error().
 batch_update(Graph, BeliefUpdates) ->
     try
@@ -111,7 +119,10 @@ batch_update(Graph, BeliefUpdates) ->
 %%%===================================================================
 
 %% @doc Incrementally update beliefs when evidence changes (forward)
--spec incremental_forward(#dua_graph{}, evidence(), evidence()) ->
+%% @param OldEvidence Previous evidence map.
+%% @param NewEvidence Updated evidence map.
+%% @return {ok, query_result()} if successful, otherwise dua_error().
+-spec incremental_forward(#dua_graph{}, #{node_id() => node_state()}, #{node_id() => node_state()}) ->
     {ok, query_result()} | dua_error().
 incremental_forward(Graph, OldEvidence, NewEvidence) ->
     try
@@ -128,7 +139,10 @@ incremental_forward(Graph, OldEvidence, NewEvidence) ->
     end.
 
 %% @doc Incrementally update beliefs when evidence changes (backward)
--spec incremental_backward(#dua_graph{}, evidence(), evidence()) ->
+%% @param OldEvidence Previous evidence map.
+%% @param NewEvidence Updated evidence map.
+%% @return {ok, query_result()} if successful, otherwise dua_error().
+-spec incremental_backward(#dua_graph{}, #{node_id() => node_state()}, #{node_id() => node_state()}) ->
     {ok, query_result()} | dua_error().
 incremental_backward(Graph, OldEvidence, NewEvidence) ->
     try
@@ -142,7 +156,9 @@ incremental_backward(Graph, OldEvidence, NewEvidence) ->
     end.
 
 %% @doc Lazy propagation: beliefs are updated for query nodes on demand
--spec lazy_propagation(#dua_graph{}, evidence(), [node_id()]) ->
+%% @param QueryNodes List of nodes whose beliefs are to be updated.
+%% @return {ok, #{node_id() => belief()}} if successful, otherwise dua_error().
+-spec lazy_propagation(#dua_graph{}, #{node_id() => node_state()}, [node_id()]) ->
     {ok, #{node_id() => belief()}} | dua_error().
 lazy_propagation(Graph, Evidence, QueryNodes) ->
     try
@@ -164,6 +180,9 @@ lazy_propagation(Graph, Evidence, QueryNodes) ->
 %%%===================================================================
 
 %% @doc Add new evidence for a node (assign state and propagate)
+%% @param NodeId The ID of the node.
+%% @param EvidenceState The state to set as evidence.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
 -spec add_evidence(#dua_graph{}, node_id(), node_state()) -> {ok, #dua_graph{}} | dua_error().
 add_evidence(Graph, NodeId, EvidenceState) ->
     case dua_graph:get_node(Graph, NodeId) of
@@ -179,6 +198,8 @@ add_evidence(Graph, NodeId, EvidenceState) ->
     end.
 
 %% @doc Remove evidence from a node (reset to uniform and propagate removal)
+%% @param NodeId The ID of the node.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
 -spec remove_evidence(#dua_graph{}, node_id()) -> {ok, #dua_graph{}} | dua_error().
 remove_evidence(#dua_graph{nodes = Nodes} = Graph, NodeId) ->
     case maps:get(NodeId, Nodes, undefined) of
@@ -193,6 +214,9 @@ remove_evidence(#dua_graph{nodes = Nodes} = Graph, NodeId) ->
     end.
 
 %% @doc Update evidence on a node (remove old, add new)
+%% @param NodeId The ID of the node.
+%% @param NewEvidenceState The new state to set as evidence.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
 -spec update_evidence(#dua_graph{}, node_id(), node_state()) -> {ok, #dua_graph{}} | dua_error().
 update_evidence(Graph, NodeId, NewEvidenceState) ->
     case remove_evidence(Graph, NodeId) of
@@ -202,7 +226,9 @@ update_evidence(Graph, NodeId, NewEvidenceState) ->
     end.
 
 %% @doc Detect conflicting evidence in the graph
--spec conflicting_evidence(#dua_graph{}, evidence()) ->
+%% @param Evidence The evidence map to check.
+%% @return {ok, [#{conflict => term(), nodes => [node_id()]}]} if successful, otherwise dua_error().
+-spec conflicting_evidence(#dua_graph{}, #{node_id() => node_state()}) ->
     {ok, [#{conflict => term(), nodes => [node_id()]}]} | dua_error().
 conflicting_evidence(Graph, Evidence) ->
     try
@@ -218,7 +244,9 @@ conflicting_evidence(Graph, Evidence) ->
 %%%===================================================================
 
 %% @doc Revise beliefs according to a revision strategy and confidences
--spec revise_beliefs(#dua_graph{}, evidence(), map()) -> {ok, #dua_graph{}} | dua_error().
+%% @param Options Map of options, e.g. #{strategy => Strategy, weights => Weights}.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
+-spec revise_beliefs(#dua_graph{}, #{node_id() => node_state()}, map()) -> {ok, #dua_graph{}} | dua_error().
 revise_beliefs(Graph, NewEvidence, Options) ->
     RevisionStrategy = maps:get(strategy, Options, weighted_average),
     ConfidenceWeights = maps:get(weights, Options, #{}),
@@ -234,7 +262,10 @@ revise_beliefs(Graph, NewEvidence, Options) ->
     end.
 
 %% @doc Update beliefs with temporal decay (older beliefs fade out)
--spec temporal_update(#dua_graph{}, evidence(), float(), pos_integer()) ->
+%% @param DecayRate The rate at which beliefs decay (0.0 to 1.0).
+%% @param TimeSteps The number of time steps to apply decay.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
+-spec temporal_update(#dua_graph{}, #{node_id() => node_state()}, float(), pos_integer()) ->
     {ok, #dua_graph{}} | dua_error().
 temporal_update(Graph, Evidence, DecayRate, TimeSteps) when DecayRate >= 0.0, DecayRate =< 1.0 ->
     try
@@ -248,7 +279,11 @@ temporal_update(_Graph, _Evidence, DecayRate, _TimeSteps) ->
     {error, {invalid_decay_rate, DecayRate}}.
 
 %% @doc Combine evidence from multiple sources with weights
--spec weighted_update(#dua_graph{}, [evidence()], [float()], map()) ->
+%% @param EvidenceList List of evidence maps.
+%% @param Weights List of weights corresponding to each evidence map.
+%% @param Options Map of options.
+%% @return {ok, #dua_graph{}} if successful, otherwise dua_error().
+-spec weighted_update(#dua_graph{}, [#{node_id() => node_state()}], [float()], map()) ->
     {ok, #dua_graph{}} | dua_error().
 weighted_update(Graph, EvidenceList, Weights, Options) when length(EvidenceList) =:= length(Weights) ->
     try
@@ -275,13 +310,20 @@ weighted_update(_Graph, EvidenceList, Weights, _Options) ->
 %%%===================================================================
 
 %% @doc Compute average belief change per node between two graphs
+%% @param OldGraph The graph before the update.
+%% @param NewGraph The graph after the update.
+%% @return #{node_id() => float()} map of belief changes.
 -spec compute_belief_change(#dua_graph{}, #dua_graph{}) -> #{node_id() => float()}.
 compute_belief_change(#dua_graph{nodes = OldNodes}, #dua_graph{nodes = NewNodes}) ->
     CommonNodes = sets:to_list(sets:intersection(sets:from_list(maps:keys(OldNodes)), sets:from_list(maps:keys(NewNodes)))),
     maps:from_list([{NodeId, compute_node_belief_change(maps:get(NodeId, OldNodes), maps:get(NodeId, NewNodes))} || NodeId <- CommonNodes]).
 
 %% @doc Measure the impact (sum, max, avg) of an update
--spec measure_update_impact(#dua_graph{}, #dua_graph{}, evidence()) ->
+%% @param OldGraph The graph before the update.
+%% @param NewGraph The graph after the update.
+%% @param Evidence The evidence applied.
+%% @return #{total_change => float(), affected_nodes => [node_id()], max_change => float(), avg_change => float(), evidence_nodes => [node_id()]}.
+-spec measure_update_impact(#dua_graph{}, #dua_graph{}, #{node_id() => node_state()}) ->
     #{total_change => float(), affected_nodes => [node_id()], max_change => float(), avg_change => float(), evidence_nodes => [node_id()]}.
 measure_update_impact(OldGraph, NewGraph, Evidence) ->
     Changes = compute_belief_change(OldGraph, NewGraph),
@@ -299,7 +341,9 @@ measure_update_impact(OldGraph, NewGraph, Evidence) ->
     }.
 
 %% @doc Validate evidence values and target nodes
--spec validate_update(#dua_graph{}, evidence()) -> ok | dua_error().
+%% @param Evidence The evidence map to validate.
+%% @return ok if valid, otherwise dua_error().
+-spec validate_update(#dua_graph{}, #{node_id() => node_state()}) -> ok | dua_error().
 validate_update(Graph, Evidence) ->
     maps:fold(fun(NodeId, State, ok) ->
         case dua_graph:get_node(Graph, NodeId) of
@@ -319,34 +363,41 @@ validate_update(Graph, Evidence) ->
 %%%===================================================================
 
 %% @private Validate that evidence states are valid for nodes
+-spec validate_evidence(#dua_graph{}, #{node_id() => node_state()}) -> ok | dua_error().
 validate_evidence(Graph, Evidence) ->
     validate_update(Graph, Evidence).
 
 %% @private Execute evidence propagation using the chosen algorithm
-execute_propagation(Graph, Evidence, Algorithm, Options) ->
+-spec execute_propagation(#dua_graph{}, #{node_id() => node_state()}, atom(), map()) ->
+    {ok, #dua_graph{}} | dua_error().
+execute_propagation(Graph, Evidence, Algorithm, _Options) ->
     case Algorithm of
         pearl_propagation ->
-            pearl_propagation_algorithm(Graph, Evidence, Options);
+            pearl_propagation_algorithm(Graph, Evidence);
         simple_propagation ->
-            simple_propagation_algorithm(Graph, Evidence, Options);
+            simple_propagation_algorithm(Graph, Evidence);
         message_passing ->
-            message_passing_algorithm(Graph, Evidence, Options);
+            message_passing_algorithm(Graph, Evidence);
         _ -> {error, {unknown_algorithm, Algorithm}}
     end.
 
 %% @private Stub: Pearl's propagation - in practice, would carry out full belief propagation
-pearl_propagation_algorithm(Graph, Evidence, _Options) ->
+-spec pearl_propagation_algorithm(#dua_graph{}, #{node_id() => node_state()}) -> {ok, #dua_graph{}} | dua_error().
+pearl_propagation_algorithm(Graph, Evidence) ->
     apply_evidence_directly(Graph, Evidence).
 
 %% @private: Simple propagation - direct evidence application
-simple_propagation_algorithm(Graph, Evidence, _Options) ->
+-spec simple_propagation_algorithm(#dua_graph{}, #{node_id() => node_state()}) -> {ok, #dua_graph{}} | dua_error().
+simple_propagation_algorithm(Graph, Evidence) ->
     apply_evidence_directly(Graph, Evidence).
 
 %% @private: Message-passing (alias for Pearl/simple here)
-message_passing_algorithm(Graph, Evidence, _Options) ->
+-spec message_passing_algorithm(#dua_graph{}, #{node_id() => node_state()}) -> {ok, #dua_graph{}} | dua_error().
+message_passing_algorithm(Graph, Evidence) ->
     apply_evidence_directly(Graph, Evidence).
 
 %% @private Apply evidence to nodes: sets 'current_belief' to certain for evidence
+-spec apply_evidence_directly(#dua_graph{}, #{node_id() => node_state()}) -> {ok, #dua_graph{}}.
 apply_evidence_directly(#dua_graph{nodes = Nodes} = Graph, Evidence) ->
     UpdatedNodes = maps:fold(
         fun(NodeId, State, AccNodes) ->
@@ -364,6 +415,7 @@ apply_evidence_directly(#dua_graph{nodes = Nodes} = Graph, Evidence) ->
     {ok, Graph#dua_graph{nodes = UpdatedNodes}}.
 
 %% @private Propagate local update from one node to its immediate children
+-spec propagate_local_update(#dua_graph{}, node_id()) -> {ok, #dua_graph{}} | dua_error().
 propagate_local_update(Graph, NodeId) ->
     case dua_graph:get_children(Graph, NodeId) of
         {ok, Children} ->
@@ -372,6 +424,7 @@ propagate_local_update(Graph, NodeId) ->
     end.
 
 %% @private: Direct update of one node's belief (no propagation)
+-spec update_belief_direct(#dua_graph{}, node_id(), belief()) -> {ok, #dua_graph{}} | dua_error().
 update_belief_direct(#dua_graph{nodes = Nodes} = Graph, NodeId, Belief) ->
     case maps:get(NodeId, Nodes, undefined) of
         undefined -> {error, {node_not_found, NodeId}};
@@ -382,16 +435,18 @@ update_belief_direct(#dua_graph{nodes = Nodes} = Graph, NodeId, Belief) ->
     end.
 
 %% @private: After batch update, propagate globally (stub)
+-spec global_propagation(#dua_graph{}) -> {ok, #dua_graph{}}.
 global_propagation(Graph) ->
     {ok, Graph}.
 
 %% @private: Compute distance/delta between two beliefs for a single node
+-spec compute_node_belief_change(#dua_node{}, #dua_node{}) -> float().
 compute_node_belief_change(#dua_node{current_belief = OldBelief}, #dua_node{current_belief = NewBelief}) ->
     dua_belief:belief_distance(OldBelief, NewBelief).
 
-%% ===== Incomplete internal stubs for your inference/integration logic ====
-
 %% @private: Compute the differences (added, removed, modified) in evidence between two maps
+-spec compute_evidence_diff(#{node_id() => node_state()}, #{node_id() => node_state()}) ->
+    {#{node_id() => node_state()}, #{node_id() => node_state()}, #{node_id() => node_state()}}.
 compute_evidence_diff(OldEvidence, NewEvidence) ->
     OldKeys = sets:from_list(maps:keys(OldEvidence)),
     NewKeys = sets:from_list(maps:keys(NewEvidence)),
@@ -409,49 +464,57 @@ compute_evidence_diff(OldEvidence, NewEvidence) ->
     {Added, Removed, Modified}.
 
 %% @private: Apply incremental adds/removes/modifies to graph
+-spec apply_incremental_changes(#dua_graph{}, #{node_id() => node_state()}, #{node_id() => node_state()}, #{node_id() => node_state()}) ->
+    {ok, #dua_graph{}} | dua_error().
 apply_incremental_changes(Graph, Added, Removed, Modified) ->
     {ok, G0} = maps:fold(fun(NodeId, _State, AccG) ->
         case remove_evidence(AccG, NodeId) of
             {ok, G1} -> {ok, G1};
             Error -> throw(Error)
         end
-    end, {ok, Graph}, Removed),
+    end, {ok, Graph}, maps:keys(Removed)),
     AllAdds = maps:merge(Added, Modified),
     propagate_evidence(G0, AllAdds).
 
 %% @private: Identify nodes whose beliefs are affected by evidence
-identify_affected_nodes(Graph, Evidence) ->
-    EvidenceNodes = maps:keys(Evidence),
-    %% Stub: in practice, find descendants of evidence nodes
-    {ok, EvidenceNodes}.
+-spec identify_affected_nodes(#dua_graph{}, #{node_id() => node_state()}) -> {ok, [node_id()]} | dua_error().
+identify_affected_nodes(_Graph, Evidence) ->
+    {ok, maps:keys(Evidence)}.
 
 %% @private: Forward inference focused on a limited set of nodes
+-spec targeted_forward_inference(#dua_graph{}, #{node_id() => node_state()}, [node_id()]) ->
+    {ok, #{beliefs => #{node_id() => belief()}}} | dua_error().
 targeted_forward_inference(Graph, Evidence, AffectedNodes) ->
     {ok, #{beliefs := AllBeliefs}} = dua_forward:infer(Graph, Evidence),
     FilteredBeliefs = maps:with(AffectedNodes, AllBeliefs),
     {ok, #{beliefs => FilteredBeliefs}}.
 
 %% @private: Identify newly implicated causes from evidence
-identify_new_causes(Graph, AddedEvidence) ->
-    AddedNodes = maps:keys(AddedEvidence),
-    {ok, AddedNodes}.
+-spec identify_new_causes(#dua_graph{}, #{node_id() => node_state()}) -> {ok, [node_id()]} | dua_error().
+identify_new_causes(_Graph, AddedEvidence) ->
+    {ok, maps:keys(AddedEvidence)}.
 
 %% @private: Backward inference focused on a target node set
+-spec targeted_backward_inference(#dua_graph{}, #{node_id() => node_state()}, [node_id()]) ->
+    {ok, #{beliefs => #{node_id() => belief()}}} | dua_error().
 targeted_backward_inference(Graph, Evidence, CauseNodes) ->
     {ok, #{beliefs := AllBeliefs}} = dua_backward:infer(Graph, Evidence),
     FilteredBeliefs = maps:with(CauseNodes, AllBeliefs),
     {ok, #{beliefs => FilteredBeliefs}}.
 
 %% @private: Build the list of nodes requiring propagation for lazy queries
+-spec build_lazy_queue(#dua_graph{}, #{node_id() => node_state()}, [node_id()]) -> {ok, [node_id()]} | dua_error().
 build_lazy_queue(_Graph, _Evidence, QueryNodes) ->
     {ok, QueryNodes}.
 
 %% @private: Perform propagation on the lazy subset
+-spec lazy_propagate_queue(#dua_graph{}, #{node_id() => node_state()}, [node_id()]) -> {ok, #dua_graph{}} | dua_error().
 lazy_propagate_queue(Graph, Evidence, PropagationQueue) ->
     FilteredGraph = filter_graph_nodes(Graph, PropagationQueue),
     propagate_evidence(FilteredGraph, Evidence).
 
 %% @private: Remove evidence, then reset children to prior
+-spec propagate_evidence_removal(#dua_graph{}, node_id()) -> {ok, #dua_graph{}} | dua_error().
 propagate_evidence_removal(Graph, NodeId) ->
     case dua_graph:get_children(Graph, NodeId) of
         {ok, Children} ->
@@ -460,10 +523,11 @@ propagate_evidence_removal(Graph, NodeId) ->
     end.
 
 %% @private: Reset a set of nodes to uniform belief
+-spec reset_children_to_prior(#dua_graph{}, [node_id()]) -> {ok, #dua_graph{}}.
 reset_children_to_prior(Graph, Children) ->
     lists:foldl(fun(ChildId, GAcc) ->
         case dua_graph:get_node(GAcc, ChildId) of
-            {ok, #dua_node{states = States} = Node} ->
+            {ok, #dua_node{states = States} = _Node} ->
                 PriorBelief = dua_belief:uniform_belief(States),
                 {ok, G1} = update_belief_direct(GAcc, ChildId, PriorBelief),
                 G1;
@@ -472,6 +536,7 @@ reset_children_to_prior(Graph, Children) ->
     end, Graph, Children).
 
 %% @private: Filter the graph to retain only specified nodes and corresponding edges
+-spec filter_graph_nodes(#dua_graph{}, [node_id()]) -> #dua_graph{}.
 filter_graph_nodes(#dua_graph{nodes = Nodes, edges = Edges} = Graph, KeepNodes) ->
     FilteredNodes = maps:with(KeepNodes, Nodes),
     FilteredEdges = lists:filter(fun(#dua_edge{from = From, to = To}) ->
@@ -480,14 +545,17 @@ filter_graph_nodes(#dua_graph{nodes = Nodes, edges = Edges} = Graph, KeepNodes) 
     Graph#dua_graph{nodes = FilteredNodes, edges = FilteredEdges}.
 
 %% @private: Extract current node beliefs as a map
+-spec extract_current_beliefs(#dua_graph{}) -> #{node_id() => belief()}.
 extract_current_beliefs(#dua_graph{nodes = Nodes}) ->
     maps:map(fun(_NodeId, #dua_node{current_belief = Belief}) -> Belief end, Nodes).
 
 %% @private: Detect impossible evidence states (stub: returns [] here)
+-spec detect_direct_conflicts(#dua_graph{}, #{node_id() => node_state()}) -> [#{conflict => term(), nodes => [node_id()]}].
 detect_direct_conflicts(_Graph, _Evidence) ->
     [].
 
 %% @private: Detect very low-probability evidence (stub logic)
+-spec detect_probabilistic_conflicts(#dua_graph{}, #{node_id() => node_state()}) -> [#{conflict => term(), nodes => [node_id()]}].
 detect_probabilistic_conflicts(Graph, Evidence) ->
     case dua_forward:infer(Graph, Evidence) of
         {ok, #{confidence := Confidence}} when Confidence < 0.01 ->
@@ -496,6 +564,8 @@ detect_probabilistic_conflicts(Graph, Evidence) ->
     end.
 
 %% @private: Weighted belief blending using interpolation
+-spec weighted_belief_revision(#dua_graph{}, #{node_id() => node_state()}, #{node_id() => float()}) ->
+    {ok, #dua_graph{}} | dua_error().
 weighted_belief_revision(Graph, NewEvidence, ConfidenceWeights) ->
     DefaultWeight = maps:get(default_weight, ConfidenceWeights, 0.5),
     %% Get current beliefs
@@ -514,17 +584,20 @@ weighted_belief_revision(Graph, NewEvidence, ConfidenceWeights) ->
     end.
 
 %% @private: Jeffrey's rule belief revision (stub, uses direct propagation)
+-spec jeffrey_belief_revision(#dua_graph{}, #{node_id() => node_state()}, map()) -> {ok, #dua_graph{}} | dua_error().
 jeffrey_belief_revision(Graph, NewEvidence, _Options) ->
     propagate_evidence(Graph, NewEvidence).
 
 %% @private: Minimal change principle (stub, uses direct propagation)
+-spec minimal_change_revision(#dua_graph{}, #{node_id() => node_state()}, map()) -> {ok, #dua_graph{}} | dua_error().
 minimal_change_revision(Graph, NewEvidence, _Options) ->
     propagate_evidence(Graph, NewEvidence).
 
 %% @private: Apply exponential decay to all node beliefs (toward uniform)
+-spec apply_temporal_decay(#dua_graph{}, float(), pos_integer()) -> {ok, #dua_graph{}} | dua_error().
 apply_temporal_decay(#dua_graph{nodes = Nodes} = Graph, DecayRate, TimeSteps) ->
     DecayFactor = math:pow(DecayRate, TimeSteps),
-    UpdatedNodes = maps:map(fun(_NodeId, #dua_node{id = Nid, current_belief = Belief, states = States} = Node) ->
+    UpdatedNodes = maps:map(fun(_NodeId, #dua_node{id = _Nid, current_belief = Belief, states = States} = Node) ->
         UniformBelief = dua_belief:uniform_belief(States),
         DecayedBelief = dua_belief:interpolate(UniformBelief, Belief, DecayFactor),
         Node#dua_node{current_belief = DecayedBelief}
@@ -532,10 +605,13 @@ apply_temporal_decay(#dua_graph{nodes = Nodes} = Graph, DecayRate, TimeSteps) ->
     {ok, Graph#dua_graph{nodes = UpdatedNodes}}.
 
 %% @private: Return a uniform weights list of size N
+-spec uniform_weights(pos_integer()) -> [float()].
 uniform_weights(N) ->
     W = 1.0 / N, lists:duplicate(N, W).
 
 %% @private: Combine multiple evidence maps using weights (very simplified: merges only strongly weighted evidence)
+-spec combine_weighted_evidence([#{node_id() => node_state()}], [float()]) ->
+    {ok, #{node_id() => node_state()}} | dua_error().
 combine_weighted_evidence(EvidenceList, Weights) ->
     WeightedPairs = lists:zip(EvidenceList, Weights),
     CombinedEvidence = lists:foldl(fun({Evidence, Wt}, Acc) ->
@@ -547,6 +623,7 @@ combine_weighted_evidence(EvidenceList, Weights) ->
     {ok, CombinedEvidence}.
 
 %% @private: Update beliefs of all children after a parent was changed (stub logic)
+-spec update_children_beliefs(#dua_graph{}, node_id(), [node_id()]) -> #dua_graph{}.
 update_children_beliefs(Graph, ParentId, Children) ->
     lists:foldl(fun(ChildId, GAcc) ->
         case update_child_belief(GAcc, ParentId, ChildId) of
@@ -556,6 +633,7 @@ update_children_beliefs(Graph, ParentId, Children) ->
     end, Graph, Children).
 
 %% @private: Directly update a child node using parent (stub: just interpolates a bit)
+-spec update_child_belief(#dua_graph{}, node_id(), node_id()) -> {ok, #dua_graph{}} | dua_error().
 update_child_belief(Graph, ParentId, ChildId) ->
     case {dua_graph:get_node(Graph, ParentId), dua_graph:get_node(Graph, ChildId)} of
         {{ok, ParentNode}, {ok, ChildNode}} ->
@@ -568,6 +646,7 @@ update_child_belief(Graph, ParentId, ChildId) ->
     end.
 
 %% @private: Apply a set of beliefs to the graph (replacing current_belief)
+-spec apply_beliefs_to_graph(#dua_graph{}, #{node_id() => belief()}) -> {ok, #dua_graph{}} | dua_error().
 apply_beliefs_to_graph(#dua_graph{nodes = Nodes} = Graph, Beliefs) ->
     UpdatedNodes = maps:fold(fun(NodeId, NewBelief, AccNodes) ->
         case maps:get(NodeId, AccNodes, undefined) of
